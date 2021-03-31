@@ -17,7 +17,7 @@ data("AirPassengers")
 str(AirPassengers)
 library(tidyverse)
 glimpse(AirPassengers)
-par(mfrow=c(4,1))
+par(mfrow=c(2,2))
 # If you get a "figure margins too large" error, 
 # try enlarging the plotting window, or type:
 # par(mar=c(1,1,1,1))
@@ -41,6 +41,7 @@ ACF$acf
 # threshold for statistical significance
 N=144
 1.96/sqrt(N)
+abline(h=1.96/sqrt(N), col="green")
 
 pacf(AirPassengers)
 # Partial Autocorrelation is the correlation of the time series with a lag of itself, 
@@ -52,11 +53,11 @@ pacf(AirPassengers)
 
 # For Additive Time Series,
 
-# Yt = St + Tt + errort
+# Y_t = S_t + T_t + error_t
 
 # For Multiplicative Time Series,
 
-# Yt = St × Tt × errort
+# Y_t = S_t x T_t x error_t
 
 # A multiplicative time series can be converted to additive by taking a log of the time series.
 
@@ -96,6 +97,7 @@ acf(goog200)
 # compute the differences between consecutive observations
 plot(diff(goog200))
 acf(diff(goog200))
+# other option = detrending
 
 Box.test(goog200, lag=10, type="Ljung-Box")
 Box.test(diff(goog200), lag=10, type="Ljung-Box")
@@ -128,13 +130,15 @@ plot(diff(goog))
 # ARIMA(p,d,q)
 autoplot(uschange[,"Consumption"]) +
   xlab("Year") + ylab("Quarterly percentage change")
-
+par(mfrow=c(1,1))
+acf(uschange[,"Consumption"])
+pacf(uschange[,"Consumption"])
 auto.arima(uschange[,"Consumption"], seasonal=FALSE)
 
 # end of the introduction
 # have a look at some data
 ################################################################################
-setwd("your path for the data")
+setwd("your path")
 dat<-read.csv("dat1.csv")
 head(dat)
 par(mfrow=c(1,1))
@@ -163,33 +167,39 @@ abline(h=0)
 library(nlme)
 dati<-dat$x
 # corARMA
+# gls has as default "REML"
 mod0<-gls(dati~t)
-mod1<-gls(dati~t, correlation=corAR1(form=~1))
+mod1<-gls(dati~t, correlation=corAR1(form=~1), method="REML")
 anova(mod0, mod1)
-resid<-residuals(mod1, type="normalized")
+resid<-residuals(mod1, type="normalized")   # do this
 acf(resid)
+
+resid.n<-residuals(mod1)
+acf(resid.n)
 summary(mod1)
 
 library(rcompanion)
 nagelkerke(mod1)
 
-abline(mod1)
+abline(mod1, col="red", lwd=2)
 predict(mod1)
 (11.031234-6.563517)/90     # delta
-(11.031234-6.563517)/90*12 # monthly data
+(11.031234-6.563517)/90*12  # monthly data
 
 #### ARIMA
 diff2<-diff(dati)
 kpss.test(diff2)
 
+library(forecast)
 (fit2<-auto.arima(dati, ic="aic"))
 (fit2<-Arima(dati, order=c(2,1,2), include.drift=TRUE))
 resi2<-fit2$residuals
 acf(resi2)
-acf(resi2^2)
 
 length(dati)
--0.0399 + c(-1.96, 1.96)*0.0149 # CI for the estimate of the drift (=trend)
+# SD = SE*sqrt(N)
+# CI = mean +/- 1.96*SD
+-0.0399 + c(-1.96, 1.96)*0.0149/sqrt(90) # CI for the estimate of the drift (=trend)
 
 str(fit2)
 fit2$fitted
@@ -199,6 +209,12 @@ fit2$fitted
 
 # compare ARIMA with gls
 # [1] 0.4672204 vs 0.5956956
+
+# how to compare the models?
+# RMSE
+
+plot(dati)
+points(y=fit2$fitted, x=time(dati), col="red", pch=16)
 
 ########################### the classical approach #############################
 # water level of the Nile
@@ -215,13 +231,13 @@ MannKendall(Nile)
 library(openair)
 # there is a trend, then we can use non-parametric Sen Theil test to assess the trend
 
-Time<-seq(as.POSIXct("1871-01-01 00:00:00", tz="UTC"),
+(Time<-seq(as.POSIXct("1871-01-01 00:00:00", tz="UTC"),
           as.POSIXct("1970-01-01 00:00:00", tz="UTC"),
-          by="year")
+          by="year"))
 
 input<-as.numeric(Nile)
 data <-data.frame(date=Time, 
-                 water.level=input)
+                  water.level=input)
 head(data)
 glimpse(data)
 plot(data$date, data$water.level, type="o")
@@ -231,8 +247,8 @@ st$data
 
 # inspect ACF
 # residuals = predicted - observed
-slope     <-st$data$res2$slope[1]
-intercept <-st$data$res2$intercept[1]
+(slope     <-st$data$res2$slope[1])
+(intercept <-st$data$res2$intercept[1])
 
 obs    <-data$water.level
 pred.st<-intercept+slope*seq(1, 100, 1)
@@ -252,7 +268,7 @@ rmse(obs, pred.st)
 library(strucchange)
 # this model says that there is just an intercept
 # and we are looking for a change in the intercept
-bp.nile <- breakpoints(Nile ~ 1)
+(bp.nile <- breakpoints(Nile ~ 1))
 
 ## fit and visualize segmented and unsegmented model
 
@@ -263,8 +279,17 @@ lines(y=fitted(fm0), x=seq(1871,1970,1), col = 3)
 lines(fitted(fm1),   x=seq(1871,1970,1), col = 4, lwd=4)
 lines(bp.nile, breaks = 1)
 summary(fm1)
-
 acf(residuals(fm1))
+
+
+points(y=pred.st, x=time(Nile), type="l", lwd=3)  # ups.... problem why is the line in the wrong place?
+
+# In R 1970-01-01 00:00:00 is zero 
+Time<-seq(as.POSIXct("1970-01-01 00:00:00", tz="UTC"),
+          as.POSIXct("2069-01-01 00:00:00", tz="UTC"),
+          by="year")
+
+# Time <- seq(1,100,1) does not work because wants to have date
 
 # compare two competing models by the RMSE
 ### RMSE
@@ -276,6 +301,8 @@ rmse(obs, pred.cp)
 # versus
 rmse(obs, pred.st)
 ### not considering a change point can let you find a trend that is not there
+
+# Flaim et al 2020 Water Resources Research
 
 ##### change in the slope
 # Computation of breakpoints in regression relationships. Given a number of breaks the function
@@ -345,6 +372,7 @@ dtemp        <- data.frame(temp = temp)
 dtemp$trend  <- model.matrix(dm0)[, 2]
 dtemp$harmon <- model.matrix(dm0)[, 3:6]
 colnames(dtemp$harmon) <- c("cos1", "cos2", "sin1", "sin2")
+head(dtemp)
 m0 <- lm(temp ~ trend + harmon, data = dtemp)
 summary(m0)
 ## --> same as above
@@ -384,7 +412,7 @@ summary(m0)
 # slope is 0.03/?
 coef(m0)[1] + coef(m0)[2] * dtemp$trend # how we get the values
 (9.156176-9.776694) # increase in 240 month
-(9.156176-9.776694)/240*12 
+(9.156176-9.776694)*-1/240*12 
 # slope is 0.03/year
 0.0310259*20 # the total increase
 
@@ -478,7 +506,7 @@ X<-time(temp)
 fit<-fitted(m1)
 lines(x=as.vector(X), y=as.vector(fit), col="red", type="l")
 
-## Flaim et al. 2016 Freshwater Biology example of struchchange and cosine trends 
+## Flaim et al. 2016 Freshwater Biology example of strucchange and cosine trends 
 ################################################################################
 ## set up data frame with all auxiliary variables
 plus<-c(rep(0,120), rep(10, 120))
@@ -757,7 +785,7 @@ library(tidyverse)
 
 ################################################################################
 library(mgcv)
-setwd("your path for the data")
+setwd("your path")
 cet<-read.csv("cet.csv")
 head(cet)
 ## get rid of the annual too - store for plotting
@@ -803,6 +831,7 @@ layout(1)
 ctrl <- list(niterEM = 0, msVerbose = TRUE, optimMethod="L-BFGS-B")
 
 ## Null-Model
+# gamm has as default "ML"
 m <- gamm(temp ~ s(Month, bs = "cc", k = 12) + s(Time),
           data = cet.new, method="REML")
 summary(m$gam)
@@ -844,7 +873,7 @@ layout(1)
 
 ############### hierarchical clustering of time-series #########################
 library(dtwclust)
-setwd("your path for the data")
+setwd("your path")
 emission<-read.csv("emission.csv")
 # emissions of greenhouse gasses per capita Eurostat (2018)
 head(emission)
@@ -862,7 +891,7 @@ out<-sapply(clust.pam, cvi, type = "internal")
 colnames(out)<-c("2 clusters", "3 clusters", "4 clusters", "5 clusters", "6 clusters")
 out
 
-clust.pam <- tsclust(emissions.norm, type="hierarchical", k=2L, distance="dtw")
+clust.pam <- tsclust(emissions.norm, type="hierarchical", k=5L, distance="dtw")
 plot(clust.pam, type = "sc")
 
 plot(clust.pam)
